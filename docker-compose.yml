@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres
+    container_name: postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    ports:
+      - "5432:5432"  # Map the host's port 5432 to the container's port 5432
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com  # Use a valid email format
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5433:80"  # Map the host's port 5433 to the container's port 80
