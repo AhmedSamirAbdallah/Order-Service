@@ -1,6 +1,6 @@
 package com.service.order.model.enums;
 
-public enum Status {
+public enum OrderStatus {
 
     PENDING("pending"),
     SHIPPED("shipped"),
@@ -9,7 +9,7 @@ public enum Status {
 
     private String description;
 
-    Status(String description) {
+    OrderStatus(String description) {
         this.description = description;
     }
 }
