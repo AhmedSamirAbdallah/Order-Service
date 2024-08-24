@@ -12,9 +12,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import javax.swing.*;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class OrderService {
@@ -30,10 +33,6 @@ public class OrderService {
 
 
     public OrderResponseDto createOrder(OrderRequestDto requestDto) {
-        List<OrderStatus> vals = Arrays.stream(OrderStatus.values()).toList();
-        if (!vals.contains(requestDto.status())) {
-            throw new BusinessException("enter valid order status", HttpStatus.BAD_REQUEST);
-        }
 
         Orders savedOrder = Orders.builder()
                 .orderName(requestDto.orderName())
@@ -44,7 +43,74 @@ public class OrderService {
                 .paymentMethod(requestDto.paymentMethod())
                 .notes(requestDto.notes())
                 .build();
+
         savedOrder = orderRepository.save(savedOrder);
+
         return mapStructMapper.toOrderResponseDto(savedOrder);
+    }
+
+    public List<OrderResponseDto> getOrders() {
+
+        List<OrderResponseDto> ordersList = orderRepository.findAll()
+                .stream()
+                .map(mapStructMapper::toOrderResponseDto)
+                .toList();
+
+        return ordersList;
+    }
+
+    public OrderResponseDto getOrderById(Long id) {
+
+        Optional<OrderResponseDto> orderResponseDtoOptional = orderRepository.findById(id).map(mapStructMapper::toOrderResponseDto);
+
+        if (!orderResponseDtoOptional.isPresent()) {
+            throw new BusinessException("order not found", HttpStatus.NOT_FOUND);
+        }
+
+        return orderResponseDtoOptional.get();
+    }
+
+    public String editOrder(Long id, OrderRequestDto requestDto) {
+        Optional<Orders> optionalOrder = orderRepository.findById(id);
+
+        if (!optionalOrder.isPresent()) {
+            throw new BusinessException("order not found", HttpStatus.NOT_FOUND);
+        }
+
+        Orders order = optionalOrder.get();
+
+        if (order.getOrderName().equals(requestDto.orderName())) {
+            order.setOrderName(requestDto.orderName());
+        }
+        if (!Objects.equals(order.getOrderDate(), requestDto.orderDate())) {//hhhhhhhhhh
+            order.setOrderDate(LocalDateTime.parse(requestDto.orderDate()));
+        }
+        if (order.getStatus().equals(requestDto.status())) {
+            order.setStatus(requestDto.status());
+        }
+        if (!Objects.equals(order.getTotalAmount(), requestDto.totalAmount())) {
+            order.setOrderName(requestDto.orderName());
+        }
+        if (!order.getShippingAddress().equals(requestDto.shippingAddress())) {
+            order.setShippingAddress(requestDto.shippingAddress());
+        }
+        if (!order.getPaymentMethod().equals(requestDto.paymentMethod())) {
+            order.setOrderName(requestDto.orderName());
+        }
+        if (!order.getNotes().equals(requestDto.notes())) {
+            order.setNotes(requestDto.notes());
+        }
+        orderRepository.save(order);
+        return "order updated successfully!";
+    }
+
+    public String deleteOrder(Long id) {
+        Optional<Orders> optionalOrder = orderRepository.findById(id);
+
+        if (!optionalOrder.isPresent()) {
+            throw new BusinessException("order not found", HttpStatus.NOT_FOUND);
+        }
+        orderRepository.deleteById(id);
+        return "Order deleted successfully!";
     }
 }
