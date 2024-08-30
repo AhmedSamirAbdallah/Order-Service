@@ -1,6 +1,7 @@
 package com.service.order.exception;
 
 import com.service.order.common.ApiResponse;
+import com.service.order.util.Constants;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -19,18 +20,18 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getDefaultMessage())
                 .collect(Collectors.toList());
 
-        return ApiResponse.ok(errors, "Validation failed", HttpStatus.BAD_REQUEST.value());
+        return ApiResponse.error(errors, HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(BusinessException.class)
     public ApiResponse handelBusinessException(BusinessException ex) {
-        return ApiResponse.failed(ex.getMessage(), HttpStatus.BAD_REQUEST.value());
+        return ApiResponse.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
     }
 
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ApiResponse handelHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
-        return ApiResponse.failed("Invalid input. Please check your request.", HttpStatus.BAD_REQUEST.value());
+        return ApiResponse.error(Constants.INVALID_INPUT, HttpStatus.BAD_REQUEST);
     }
 
 //    @ExceptionHandler(Exception.class)

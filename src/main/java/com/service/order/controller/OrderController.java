@@ -3,13 +3,14 @@ package com.service.order.controller;
 import com.service.order.common.ApiResponse;
 import com.service.order.model.dto.request.OrderRequestDto;
 import com.service.order.service.OrderService;
+import com.service.order.util.Constants;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping(path = "/orders")
+@RequestMapping(path = "/api/orders")
 public class OrderController {
     private final OrderService orderService;
 
@@ -20,27 +21,27 @@ public class OrderController {
 
     @PostMapping
     ApiResponse createOrder(@RequestBody @Valid OrderRequestDto orderRequestDto) {
-        return ApiResponse.ok(orderService.createOrder(orderRequestDto), "order created successfully!", HttpStatus.CREATED.value());
+        return ApiResponse.success(orderService.createOrder(orderRequestDto), Constants.ORDER_CREATED, HttpStatus.CREATED);
     }
 
     @GetMapping
     ApiResponse getOrder() {
-        return ApiResponse.ok(orderService.getOrders(), "order created successfully!", HttpStatus.OK.value());
+        return ApiResponse.success(orderService.getOrders(), Constants.ORDER_RETRIEVED, HttpStatus.OK);
     }
 
     @GetMapping(path = "/{id}")
     ApiResponse getOrders(@PathVariable Long id) {
-        return ApiResponse.ok(orderService.getOrderById(id), "order created successfully!", HttpStatus.CREATED.value());
+        return ApiResponse.success(orderService.getOrderById(id), Constants.ORDER_RETRIEVED, HttpStatus.OK);
     }
 
-    @PutMapping(path = "/{id}")
-    ApiResponse editOrder(@PathVariable Long id, @RequestBody @Valid OrderRequestDto requestDto) {
-        return ApiResponse.ok(null, orderService.editOrder(id, requestDto), HttpStatus.OK.value());
-    }
-
+    //        @PutMapping(path = "/{id}")
+//    ApiResponse editOrder(@PathVariable Long id, @RequestBody @Valid OrderRequestDto requestDto) {
+//        return ApiResponse.success(orderService.updateOrder(id, requestDto), HttpStatus.OK);
+//    }
+//
     @DeleteMapping(path = "/{id}")
     ApiResponse deleteOrder(@PathVariable Long id) {
-        return ApiResponse.ok(null, orderService.deleteOrder(id), HttpStatus.OK.value());
+        return ApiResponse.success(orderService.deleteOrder(id), Constants.ORDER_DELETED, HttpStatus.OK);
     }
 
 }
