@@ -1,6 +1,7 @@
 package com.service.order.client;
 
 import com.service.order.model.dto.response.ProductResponseDto;
+import com.service.order.util.Constants;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,6 @@ public interface ProductClient {
     ProductResponseDto getProductById(@PathVariable String id);
 
     default ProductResponseDto fallbackForProductService(String id, Throwable th) {
-        return new ProductResponseDto(null, "PRODUCT_SERVICE_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE);
+        return new ProductResponseDto(null, Constants.PRODUCT_SERVICE_NOT_AVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
     }
 }

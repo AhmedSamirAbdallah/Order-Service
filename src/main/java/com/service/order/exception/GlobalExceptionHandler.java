@@ -34,6 +34,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(Constants.INVALID_INPUT, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(ProductServiceUnAvailableException.class)
+    public ApiResponse handelProductServiceUnAvailableException(ProductServiceUnAvailableException ex) {
+        return ApiResponse.error(Constants.PRODUCT_SERVICE_NOT_AVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+
 //    @ExceptionHandler(Exception.class)
 //    public ResponseEntity<ApiResponse<String>> handleGeneralException(Exception ex) {
 //        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

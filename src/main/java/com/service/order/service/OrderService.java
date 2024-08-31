@@ -3,6 +3,7 @@ package com.service.order.service;
 import com.service.order.client.ProductClient;
 import com.service.order.config.OrderServiceConfig;
 import com.service.order.exception.BusinessException;
+import com.service.order.exception.ProductServiceUnAvailableException;
 import com.service.order.mapper.MapStructMapper;
 import com.service.order.model.dto.OrderItemDto;
 import com.service.order.model.dto.request.OrderRequestDto;
@@ -65,11 +66,6 @@ public class OrderService {
         return productClient.getProductById(id);
     }
 
-//    private ProductResponseDto fallbackForProductService(String id, Throwable th) {
-//        logger.error("Product service is unavailable: {}", th.getMessage());
-//        return new ProductResponseDto(null, "PRODUCT_SERVICE_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE);
-//    }
-
     @Transactional
     public OrderResponseDto createOrder(OrderRequestDto requestDto) {
 
@@ -95,20 +91,24 @@ public class OrderService {
 
         for (OrderItemDto item : requestDto.orderItems()) {
 
-            ProductResponseDto responseDto = getProduct(item.productId());
-            if(responseDto==null) continue;
-            BigDecimal productPrice = responseDto.payload().price();
+            try {
+                ProductResponseDto responseDto = productClient.getProductById(item.productId());
+                BigDecimal productPrice = responseDto.payload().price();
 
-            productPrice = productPrice.multiply(BigDecimal.valueOf(item.quantity()));
-            totalAmount = totalAmount.add(productPrice);
+                productPrice = productPrice.multiply(BigDecimal.valueOf(item.quantity()));
+                totalAmount = totalAmount.add(productPrice);
 
 
-            orderItems.add(OrderItem.builder()
-                    .order(order)
-                    .productId(item.productId())
-                    .quantity(item.quantity())
-                    .build());
+                orderItems.add(OrderItem.builder()
+                        .order(order)
+                        .productId(item.productId())
+                        .quantity(item.quantity())
+                        .build());
 
+            } catch (Exception e) {
+                logger.error(e.getMessage());
+                throw new ProductServiceUnAvailableException(Constants.PRODUCT_SERVICE_NOT_AVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
+            }
         }
 
         order.setOrderItems(orderItems);
