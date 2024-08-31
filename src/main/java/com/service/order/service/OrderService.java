@@ -1,37 +1,74 @@
 package com.service.order.service;
 
+import com.service.order.client.ProductClient;
+import com.service.order.config.OrderServiceConfig;
 import com.service.order.exception.BusinessException;
 import com.service.order.mapper.MapStructMapper;
 import com.service.order.model.dto.OrderItemDto;
 import com.service.order.model.dto.request.OrderRequestDto;
 import com.service.order.model.dto.response.OrderResponseDto;
+import com.service.order.model.dto.response.ProductResponseDto;
 import com.service.order.model.entity.OrderItem;
 import com.service.order.model.entity.Orders;
 import com.service.order.model.enums.OrderStatus;
 import com.service.order.repository.OrderRepository;
 import com.service.order.util.Constants;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.hibernate.query.Order;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import javax.swing.*;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
+@Slf4j
 public class OrderService {
 
     private final OrderRepository orderRepository;
     private final MapStructMapper mapStructMapper;
+    private final ProductClient productClient;
+    private final OrderServiceConfig orderServiceConfig;
+    private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
 
     @Autowired
-    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper) {
+    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig) {
         this.orderRepository = orderRepository;
         this.mapStructMapper = mapStructMapper;
+        this.productClient = productClient;
+        this.orderServiceConfig = orderServiceConfig;
     }
 
+    private BigDecimal calculateTotalAmount(BigDecimal totalAmount) {
+        //calc discount
+        BigDecimal discountAmount = totalAmount.multiply(orderServiceConfig.getDiscount());
+        totalAmount = totalAmount.subtract(discountAmount);
+
+        //add tax amount
+        BigDecimal taxAmount = totalAmount.multiply(orderServiceConfig.getTax());
+        totalAmount = totalAmount.add(taxAmount);
+
+        //add shipping cost
+        totalAmount = totalAmount.add(orderServiceConfig.getShippingCost());
+
+        return totalAmount;
+    }
+
+    public ProductResponseDto getProduct(String id) {
+        return productClient.getProductById(id);
+    }
+
+//    private ProductResponseDto fallbackForProductService(String id, Throwable th) {
+//        logger.error("Product service is unavailable: {}", th.getMessage());
+//        return new ProductResponseDto(null, "PRODUCT_SERVICE_UNAVAILABLE", HttpStatus.SERVICE_UNAVAILABLE);
+//    }
 
     @Transactional
     public OrderResponseDto createOrder(OrderRequestDto requestDto) {
@@ -41,12 +78,11 @@ public class OrderService {
                 .customerId(requestDto.customerId())
                 .orderDate(requestDto.orderDate())
                 .status(OrderStatus.PENDING)
-                .totalAmount(requestDto.totalAmount())
                 .shippingAddress(requestDto.shippingAddress())
                 .paymentMethod(requestDto.paymentMethod())
-                .shippingCost(requestDto.shippingCost())
-                .discount(requestDto.discount())
-                .taxAmount(requestDto.taxAmount())
+                .shippingCost(orderServiceConfig.getShippingCost())
+                .discount(orderServiceConfig.getDiscount())
+                .taxAmount(orderServiceConfig.getTax())
                 .orderSource(requestDto.orderSource())
                 .notes(requestDto.notes())
                 .build();
@@ -55,15 +91,28 @@ public class OrderService {
         List<OrderItem> orderItems = new ArrayList<>();
 
         //TODO checks the availability of the selected products (by consulting the Inventory Service).
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
         for (OrderItemDto item : requestDto.orderItems()) {
+
+            ProductResponseDto responseDto = getProduct(item.productId());
+            if(responseDto==null) continue;
+            BigDecimal productPrice = responseDto.payload().price();
+
+            productPrice = productPrice.multiply(BigDecimal.valueOf(item.quantity()));
+            totalAmount = totalAmount.add(productPrice);
+
+
             orderItems.add(OrderItem.builder()
                     .order(order)
                     .productId(item.productId())
                     .quantity(item.quantity())
                     .build());
+
         }
-        //TODO  calculates the total cost, including any taxes, discounts, and shipping fees
+
         order.setOrderItems(orderItems);
+        order.setTotalAmount(calculateTotalAmount(totalAmount));
         order = orderRepository.save(order);
 
         return mapStructMapper.toOrderResponseDto(order);

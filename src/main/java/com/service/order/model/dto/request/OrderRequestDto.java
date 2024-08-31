@@ -22,10 +22,8 @@ public record OrderRequestDto(
         @NotNull(message = "Order date is mandatory")
         LocalDateTime orderDate,
 
-        @NotNull(message = "Order status is mandatory")
         OrderStatus status,
 
-        @NotNull(message = "Total amount is mandatory")
         @DecimalMin(value = "0.00", message = "Total amount must be positive")
         BigDecimal totalAmount,
 
@@ -44,7 +42,6 @@ public record OrderRequestDto(
         @DecimalMin(value = "0.00", message = "Discount must be positive")
         BigDecimal discount,
 
-        @NotNull(message = "Tax amount is mandatory")
         @DecimalMin(value = "0.00", message = "Tax amount must be positive")
         BigDecimal taxAmount,
 

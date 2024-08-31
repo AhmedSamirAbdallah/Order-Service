@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3'
 
 services:
   postgres:
@@ -9,7 +9,8 @@ services:
       POSTGRES_PASSWORD: admin
     ports:
       - "5432:5432"  # Map the host's port 5432 to the container's port 5432
-
+    networks:
+      - app-network
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin
@@ -18,3 +19,10 @@ services:
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "5433:80"  # Map the host's port 5433 to the container's port 80
+    networks:
+      - app-network
+
+
+networks:
+  app-network:
+    driver: bridge

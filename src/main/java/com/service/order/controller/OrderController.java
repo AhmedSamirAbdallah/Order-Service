@@ -44,4 +44,9 @@ public class OrderController {
         return ApiResponse.success(orderService.deleteOrder(id), Constants.ORDER_DELETED, HttpStatus.OK);
     }
 
+    @GetMapping(path = "/products/{id}")
+    ApiResponse getProductDetails(@PathVariable String id){
+        return ApiResponse.success(orderService.getProduct(id),"",HttpStatus.OK);
+    }
+
 }

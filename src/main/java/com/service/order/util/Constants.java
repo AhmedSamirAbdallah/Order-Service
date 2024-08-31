@@ -1,10 +1,8 @@
 package com.service.order.util;
 
+import java.math.BigDecimal;
+
 public class Constants {
-
-    public static final int MAX_RETRIES = 3;
-    public static final double TAX_RATE = 0.07;
-
 
     // Success messages
     public static final String ORDER_CREATED = "Order created successfully.";
