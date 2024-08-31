@@ -13,13 +13,11 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public record OrderRequestDto(
-        @NotBlank(message = "Order number is mandatory")
         String orderNumber,
 
         @NotNull(message = "Customer ID is mandatory")
         Long customerId,
 
-        @NotNull(message = "Order date is mandatory")
         LocalDateTime orderDate,
 
         OrderStatus status,

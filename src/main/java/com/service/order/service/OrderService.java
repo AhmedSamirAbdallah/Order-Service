@@ -70,9 +70,9 @@ public class OrderService {
     public OrderResponseDto createOrder(OrderRequestDto requestDto) {
 
         Orders order = Orders.builder()
-                .orderNumber(requestDto.orderNumber())
+                .orderNumber("ORD" + orderRepository.findNextValOfSequence())
                 .customerId(requestDto.customerId())
-                .orderDate(requestDto.orderDate())
+                .orderDate(LocalDateTime.now())
                 .status(OrderStatus.PENDING)
                 .shippingAddress(requestDto.shippingAddress())
                 .paymentMethod(requestDto.paymentMethod())
