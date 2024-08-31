@@ -22,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.swing.*;
@@ -38,13 +39,15 @@ public class OrderService {
     private final ProductClient productClient;
     private final OrderServiceConfig orderServiceConfig;
     private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Autowired
-    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig) {
+    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate) {
         this.orderRepository = orderRepository;
         this.mapStructMapper = mapStructMapper;
         this.productClient = productClient;
         this.orderServiceConfig = orderServiceConfig;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
     private BigDecimal calculateTotalAmount(BigDecimal totalAmount) {
@@ -115,7 +118,12 @@ public class OrderService {
         order.setTotalAmount(calculateTotalAmount(totalAmount));
         order = orderRepository.save(order);
 
-        return mapStructMapper.toOrderResponseDto(order);
+        OrderResponseDto responseDto = mapStructMapper.toOrderResponseDto(order);
+        kafkaTemplate.send(Constants.ORDER_CREATED_EVENT, responseDto);
+
+        //TODO Update Inventory STOCK
+
+        return responseDto;
     }
 
     public List<OrderResponseDto> getOrders() {

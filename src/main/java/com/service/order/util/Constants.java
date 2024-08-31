@@ -17,4 +17,9 @@ public class Constants {
     public static final String INVALID_INPUT = "Invalid input. Please check your request.";
     public static final String INVALID_ORDER_ID = "Invalid order ID provided.";
     public static final String ORDER_CREATION_FAILED = "Failed to create order.";
+
+    // Kafka Topics
+    public static final String ORDER_CREATED_EVENT = "order-created-event";
+    public static final String ORDER_UPDATED_EVENT = "order-updated-event";
+    public static final String ORDER_DELETED_EVENT = "order-deleted-event";
 }
