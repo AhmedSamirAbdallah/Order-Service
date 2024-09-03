@@ -15,5 +15,7 @@ public interface MapStructMapper {
 
     OrderItemDto toOrderItemDto(OrderItem orderItem);
 
+    OrderItem toOrderItem(OrderItemDto orderItemDto);
+
 
 }

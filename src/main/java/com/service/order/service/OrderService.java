@@ -11,24 +11,31 @@ import com.service.order.model.dto.response.OrderResponseDto;
 import com.service.order.model.dto.response.ProductResponseDto;
 import com.service.order.model.entity.OrderItem;
 import com.service.order.model.entity.Orders;
+import com.service.order.model.enums.OrderSource;
 import com.service.order.model.enums.OrderStatus;
+import com.service.order.model.enums.PaymentMethod;
 import com.service.order.repository.OrderRepository;
 import com.service.order.util.Constants;
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.query.Order;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
-import javax.swing.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -40,14 +47,19 @@ public class OrderService {
     private final OrderServiceConfig orderServiceConfig;
     private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
+
+    @Value(value = "${redis.cache.ttl}")
+    private Long timeToLive;
 
     @Autowired
-    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate) {
+    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate, RedisTemplate<String, Object> redisTemplate) {
         this.orderRepository = orderRepository;
         this.mapStructMapper = mapStructMapper;
         this.productClient = productClient;
         this.orderServiceConfig = orderServiceConfig;
         this.kafkaTemplate = kafkaTemplate;
+        this.redisTemplate = redisTemplate;
     }
 
     private BigDecimal calculateTotalAmount(BigDecimal totalAmount) {
@@ -75,7 +87,7 @@ public class OrderService {
         Orders order = Orders.builder()
                 .orderNumber("ORD" + orderRepository.findNextValOfSequence())
                 .customerId(requestDto.customerId())
-                .orderDate(LocalDateTime.now())
+                .orderDate(LocalDateTime.now())  // Setting current date and time
                 .status(OrderStatus.PENDING)
                 .shippingAddress(requestDto.shippingAddress())
                 .paymentMethod(requestDto.paymentMethod())
@@ -118,6 +130,8 @@ public class OrderService {
         order.setTotalAmount(calculateTotalAmount(totalAmount));
         order = orderRepository.save(order);
 
+//        redisTemplate.opsForValue().set(Constants.ORDER_CACHE_KEY_PREFIX + order.getId(), order, timeToLive, TimeUnit.MINUTES);
+
         OrderResponseDto responseDto = mapStructMapper.toOrderResponseDto(order);
         kafkaTemplate.send(Constants.ORDER_CREATED_EVENT, responseDto);
 
@@ -147,40 +161,97 @@ public class OrderService {
         return orderResponseDtoOptional.get();
     }
 
-    //    public OrderResponseDto updateOrder(Long id, OrderRequestDto requestDto) {
-//        Optional<Orders> optionalOrder = orderRepository.findById(id);
-//
-//        if (!optionalOrder.isPresent()) {
-//            throw new BusinessException(Constants.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND);
+    private Orders getOrder(Long id) {
+        return orderRepository.findById(id).orElseThrow(() -> new BusinessException(Constants.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+    }
+
+    private void validateUpdateOrder(OrderRequestDto requestDto, Orders order) {
+//        if (order.getStatus().equals(OrderStatus.SHIPPED)) {
+//            throw new BusinessException(Constants.ORDER_STATUS_SHIPPED_UPDATE_ERROR, HttpStatus.FORBIDDEN);
 //        }
-//
-//        Orders order = optionalOrder.get();
-//
-//        if (requestDto.) {
-//            order.setOrderName(requestDto.orderName());
-//        }
-//        if (!Objects.equals(order.getOrderDate(), requestDto.orderDate())) {//hhhhhhhhhh
-//            order.setOrderDate(LocalDateTime.parse(requestDto.orderDate()));
-//        }
-//        if (order.getStatus().equals(requestDto.status())) {
-//            order.setStatus(requestDto.status());
-//        }
-//        if (!Objects.equals(order.getTotalAmount(), requestDto.totalAmount())) {
-//            order.setOrderName(requestDto.orderName());
-//        }
-//        if (!order.getShippingAddress().equals(requestDto.shippingAddress())) {
-//            order.setShippingAddress(requestDto.shippingAddress());
-//        }
-//        if (!order.getPaymentMethod().equals(requestDto.paymentMethod())) {
-//            order.setOrderName(requestDto.orderName());
-//        }
-//        if (!order.getNotes().equals(requestDto.notes())) {
-//            order.setNotes(requestDto.notes());
-//        }
-//        orderRepository.save(order);
-//        return "order updated successfully!";
-//    }
-//
+
+        Set<PaymentMethod> validPaymentMethod = Set.of(
+                PaymentMethod.CASH,
+                PaymentMethod.PAYPAL,
+                PaymentMethod.CREDIT_CARD,
+                PaymentMethod.BANK_TRANSFER,
+                PaymentMethod.DEBIT_CARD
+        );
+
+        if (!validPaymentMethod.contains(requestDto.paymentMethod())) {
+            throw new BusinessException(Constants.INVALID_PAYMENT_METHOD + requestDto.paymentMethod(), HttpStatus.BAD_REQUEST);
+        }
+
+        Set<OrderStatus> validOrderStatus = Set.of(
+                OrderStatus.PENDING,
+                OrderStatus.CONFIRMED,
+                OrderStatus.SHIPPED,
+                OrderStatus.DELIVERED,
+                OrderStatus.CANCELED
+
+        );
+
+        if (!validOrderStatus.contains(requestDto.status())) {
+            throw new BusinessException(Constants.INVALID_ORDER_STATUS + requestDto.status(), HttpStatus.BAD_REQUEST);
+        }
+
+        Set<OrderSource> validOrderSource = Set.of(
+                OrderSource.WEBSITE,
+                OrderSource.MOBILE_APP,
+                OrderSource.IN_STORE
+        );
+
+        if (!validOrderSource.contains(requestDto.orderSource())) {
+            throw new BusinessException(Constants.INVALID_ORDER_SOURCE + requestDto.status(), HttpStatus.BAD_REQUEST);
+        }
+
+        if (requestDto.orderItems().isEmpty()) {
+            throw new BusinessException(Constants.EMPTY_ORDER_LIST + requestDto.status(), HttpStatus.BAD_REQUEST);
+        }
+
+        //TODO Ensure that each productId is valid and exists in the inventory.
+        //Check that the quantity is positive and within allowable limits.
+        //Update the order items accordingly.
+
+    }
+
+    private List<OrderItem> mapToOrderItems(List<OrderItemDto> orderItems) {
+        return orderItems.stream()
+                .map(item -> OrderItem.builder()
+                        .productId(item.productId())
+                        .quantity(item.quantity())
+                        .build())
+                .toList();
+    }
+
+    public OrderResponseDto updateOrder(Long id, OrderRequestDto requestDto) {
+
+        Orders order = getOrder(id);
+
+        validateUpdateOrder(requestDto, order);
+
+
+        //TODO Stock Availability
+
+        //TODO     "totalAmount": 8524.40 handel the update of tha amount
+
+
+        if (requestDto.status() != null) {
+            order.setStatus(requestDto.status());
+        }
+
+        if (!order.getStatus().equals(OrderStatus.SHIPPED) && requestDto.shippingAddress() != null) {
+            order.setShippingAddress(requestDto.shippingAddress());
+        }
+
+        if (!requestDto.orderItems().isEmpty()) {
+            order.setOrderItems(mapToOrderItems(requestDto.orderItems()));
+            //get details of each product from product service and then cal the new amount
+        }
+
+        return mapStructMapper.toOrderResponseDto(orderRepository.save(order));
+    }
+
     public OrderResponseDto deleteOrder(Long id) {
         Optional<Orders> optionalOrder = orderRepository.findById(id);
 

@@ -33,7 +33,7 @@ public class Orders {
     private Long customerId;
 
 
-    @Column(name = "order_date", nullable = false)
+    @Column(name = "order_date", nullable = true)
     private LocalDateTime orderDate;
 
     @Enumerated(EnumType.STRING)

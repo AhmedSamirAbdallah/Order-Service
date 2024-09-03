@@ -24,30 +24,43 @@ services:
     networks:
       - app-network
 
-  zookeeper:
-    image: zookeeper:3.5
-    container_name: zookeeper
-    ports:
-      - "2181:2181"
-    networks:
-      - kafka-network
+#  zookeeper:
+#    image: zookeeper:3.5
+#    container_name: zookeeper-order
+#    ports:
+#      - "2182:2181"  # Use a different port mapping for the second instance
+#    networks:
+#      - kafka-network-order
+#
+#  kafka:
+#      image: confluentinc/cp-kafka:latest
+#      container_name: kafka-order
+#      ports:
+#        - "9093:9092"  # Use a different port mapping for the second instance
+#      environment:
+#        KAFKA_ZOOKEEPER_CONNECT: zookeeper-order:2181
+#        KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093
+#        KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#      depends_on:
+#        - zookeeper
+#      networks:
+#        - kafka-network-order
 
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    container_name: kafka
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    depends_on:
-      - zookeeper
-    networks:
-      - kafka-network
+
+#  redis:
+#    image: redis:latest
+#    container_name: redis-order
+#    ports:
+#      - "6380:6379"  # Use a different port mapping for the second instance
+#    networks:
+#      - redis-network-order
+
 
 networks:
   app-network:
     driver: bridge
-  kafka-network:
-    driver: bridge
+#  kafka-network-order:
+#    driver: bridge
+#  redis-network-order:
+#    driver: bridge
+

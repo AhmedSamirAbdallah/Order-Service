@@ -34,19 +34,19 @@ public class OrderController {
         return ApiResponse.success(orderService.getOrderById(id), Constants.ORDER_RETRIEVED, HttpStatus.OK);
     }
 
-    //        @PutMapping(path = "/{id}")
-//    ApiResponse editOrder(@PathVariable Long id, @RequestBody @Valid OrderRequestDto requestDto) {
-//        return ApiResponse.success(orderService.updateOrder(id, requestDto), HttpStatus.OK);
-//    }
-//
+    @PutMapping(path = "/{id}")
+    ApiResponse editOrder(@PathVariable Long id, @RequestBody @Valid OrderRequestDto requestDto) {
+        return ApiResponse.success(orderService.updateOrder(id, requestDto),Constants.ORDER_UPDATED, HttpStatus.OK);
+    }
+
     @DeleteMapping(path = "/{id}")
     ApiResponse deleteOrder(@PathVariable Long id) {
         return ApiResponse.success(orderService.deleteOrder(id), Constants.ORDER_DELETED, HttpStatus.OK);
     }
 
     @GetMapping(path = "/products/{id}")
-    ApiResponse getProductDetails(@PathVariable String id){
-        return ApiResponse.success(orderService.getProduct(id),"",HttpStatus.OK);
+    ApiResponse getProductDetails(@PathVariable String id) {
+        return ApiResponse.success(orderService.getProduct(id), "", HttpStatus.OK);
     }
 
 }
