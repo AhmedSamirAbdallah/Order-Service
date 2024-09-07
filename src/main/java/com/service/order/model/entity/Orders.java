@@ -1,5 +1,9 @@
 package com.service.order.model.entity;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateTimeDeserializer;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
 import com.service.order.model.enums.OrderSource;
 import com.service.order.model.enums.OrderStatus;
 import com.service.order.model.enums.PaymentMethod;
@@ -33,8 +37,8 @@ public class Orders {
     private Long customerId;
 
 
-    @Column(name = "order_date", nullable = true)
-    private LocalDateTime orderDate;
+    @Column(name = "order_date")
+    private String orderDate;
 
     @Enumerated(EnumType.STRING)
     private OrderStatus status;
@@ -68,5 +72,6 @@ public class Orders {
 
     @Column(columnDefinition = "TEXT")
     private String notes;
+
 
 }

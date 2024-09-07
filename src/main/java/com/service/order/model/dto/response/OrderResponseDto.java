@@ -13,7 +13,7 @@ public record OrderResponseDto(
         Long id,
         String orderNumber,
         Long customerId,
-        LocalDateTime orderDate,
+        String orderDate,
         OrderStatus status,
         BigDecimal totalAmount,
         String shippingAddress,

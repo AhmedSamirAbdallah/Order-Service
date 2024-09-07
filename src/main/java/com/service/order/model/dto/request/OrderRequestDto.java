@@ -18,7 +18,7 @@ public record OrderRequestDto(
         @NotNull(message = "Customer ID is mandatory")
         Long customerId,
 
-        LocalDateTime orderDate,
+        String orderDate,
 
         OrderStatus status,
 

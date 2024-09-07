@@ -91,7 +91,7 @@ public class OrderService {
         Orders order = Orders.builder()
                 .orderNumber("ORD" + orderRepository.findNextValOfSequence())
                 .customerId(requestDto.customerId())
-                .orderDate(LocalDateTime.now())
+                .orderDate((LocalDateTime.now()).toString())
                 .status(OrderStatus.PENDING)
                 .shippingAddress(requestDto.shippingAddress())
                 .paymentMethod(requestDto.paymentMethod())
@@ -110,36 +110,33 @@ public class OrderService {
 
         for (OrderItemDto item : requestDto.orderItems()) {
 
-            try {
-                ProductResponseDto responseDto = productClient.getProductById(item.productId());
-                if (responseDto.httpStatus().equals(HttpStatus.OK)) {
+            ProductResponseDto responseDto = productClient.getProductById(item.productId());
 
-                    BigDecimal productPrice = responseDto.payload().price();
-
-                    productPrice = productPrice.multiply(BigDecimal.valueOf(item.quantity()));
-                    totalAmount = totalAmount.add(productPrice);
-
-
-                    orderItems.add(OrderItem.builder()
-                            .order(order)
-                            .productId(item.productId())
-                            .quantity(item.quantity())
-                            .build());
-                } else {
-                    throw new BusinessException(responseDto.message(), responseDto.httpStatus());
-                }
-            } catch (Exception e) {
-                logger.error(e.getMessage());
-                throw new ProductServiceUnAvailableException(Constants.PRODUCT_SERVICE_NOT_AVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
+            if (responseDto == null || responseDto.payload() == null) {
+                throw new BusinessException(responseDto.message(), responseDto.httpStatus());
             }
+
+
+            BigDecimal productPrice = responseDto.payload().price();
+
+            productPrice = productPrice.multiply(BigDecimal.valueOf(item.quantity()));
+            totalAmount = totalAmount.add(productPrice);
+
+
+            orderItems.add(OrderItem.builder()
+                    .order(order)
+                    .productId(item.productId())
+                    .quantity(item.quantity())
+                    .build());
+
         }
         order.setOrderItems(orderItems);
         order.setTotalAmount(calculateTotalAmount(totalAmount));
         order = orderRepository.save(order);
 
-//        redisTemplate.opsForValue().set(Constants.ORDER_CACHE_KEY_PREFIX + order.getId(), order, timeToLive, TimeUnit.MINUTES);
-
         OrderResponseDto responseDto = mapStructMapper.toOrderResponseDto(order);
+
+        redisTemplate.opsForValue().set(Constants.ORDER_CACHE_KEY_PREFIX + order.getId(), responseDto, timeToLive, TimeUnit.MINUTES);
         kafkaTemplate.send(Constants.ORDER_CREATED_EVENT, responseDto);
 
         //TODO Update Inventory STOCK
@@ -159,23 +156,31 @@ public class OrderService {
 
     public OrderResponseDto getOrderById(Long id) {
 
-        Optional<OrderResponseDto> orderResponseDtoOptional = orderRepository.findById(id).map(mapStructMapper::toOrderResponseDto);
+        Orders order = getOrder(id);
 
-        if (!orderResponseDtoOptional.isPresent()) {
-            throw new BusinessException(Constants.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND);
-        }
-
-        return orderResponseDtoOptional.get();
+        return mapStructMapper.toOrderResponseDto(order);
     }
 
     private Orders getOrder(Long id) {
-        return orderRepository.findById(id).orElseThrow(() -> new BusinessException(Constants.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+
+        String cacheKey = Constants.ORDER_CACHE_KEY_PREFIX + id;
+        OrderResponseDto orderResponseDto = (OrderResponseDto) redisTemplate.opsForValue().get(cacheKey);
+
+        if (orderResponseDto != null) {
+            return mapStructMapper.toOrder(orderResponseDto);
+        }
+
+        Orders order = orderRepository.findById(id).orElseThrow(() -> new BusinessException(Constants.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
+
+        redisTemplate.opsForValue().set(cacheKey, mapStructMapper.toOrderRequestDto(order), timeToLive, TimeUnit.MINUTES);
+
+        return order;
     }
 
     private void validateUpdateOrder(UpdateOrderRequestDto requestDto, Orders order) {
-//        if (order.getStatus().equals(OrderStatus.SHIPPED)) {
-//            throw new BusinessException(Constants.ORDER_STATUS_SHIPPED_UPDATE_ERROR, HttpStatus.FORBIDDEN);
-//        }
+        if (order.getStatus().equals(OrderStatus.SHIPPED)) {
+            throw new BusinessException(Constants.ORDER_STATUS_SHIPPED_UPDATE_ERROR, HttpStatus.FORBIDDEN);
+        }
 
 
         Set<OrderStatus> validOrderStatus = Set.of(
@@ -284,7 +289,17 @@ public class OrderService {
 
         order = orderRepository.save(order);
 
-        return mapStructMapper.toOrderResponseDto(order);
+        OrderResponseDto responseDto = mapStructMapper.toOrderResponseDto(order);
+
+        if (order.getStatus().equals(OrderStatus.CANCELED)) {
+            kafkaTemplate.send(Constants.ORDER_CANCELED_EVENT, responseDto);
+        } else {
+            kafkaTemplate.send(Constants.ORDER_UPDATED, responseDto);
+        }
+
+        redisTemplate.delete(Constants.ORDER_CACHE_KEY_PREFIX + id);
+
+        return responseDto;
     }
 
     public OrderResponseDto deleteOrder(Long id) {
@@ -293,6 +308,11 @@ public class OrderService {
 
         orderRepository.deleteById(id);
 
-        return mapStructMapper.toOrderResponseDto(order);
+        OrderResponseDto responseDto = mapStructMapper.toOrderResponseDto(order);
+
+        kafkaTemplate.send(Constants.ORDER_DELETED, responseDto);
+        redisTemplate.delete(Constants.ORDER_CACHE_KEY_PREFIX + id);
+
+        return responseDto;
     }
 }
