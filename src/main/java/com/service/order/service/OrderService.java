@@ -112,18 +112,22 @@ public class OrderService {
 
             try {
                 ProductResponseDto responseDto = productClient.getProductById(item.productId());
-                BigDecimal productPrice = responseDto.payload().price();
+                if (responseDto.httpStatus().equals(HttpStatus.OK)) {
 
-                productPrice = productPrice.multiply(BigDecimal.valueOf(item.quantity()));
-                totalAmount = totalAmount.add(productPrice);
+                    BigDecimal productPrice = responseDto.payload().price();
+
+                    productPrice = productPrice.multiply(BigDecimal.valueOf(item.quantity()));
+                    totalAmount = totalAmount.add(productPrice);
 
 
-                orderItems.add(OrderItem.builder()
-                        .order(order)
-                        .productId(item.productId())
-                        .quantity(item.quantity())
-                        .build());
-
+                    orderItems.add(OrderItem.builder()
+                            .order(order)
+                            .productId(item.productId())
+                            .quantity(item.quantity())
+                            .build());
+                } else {
+                    throw new BusinessException(responseDto.message(), responseDto.httpStatus());
+                }
             } catch (Exception e) {
                 logger.error(e.getMessage());
                 throw new ProductServiceUnAvailableException(Constants.PRODUCT_SERVICE_NOT_AVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
@@ -226,6 +230,12 @@ public class OrderService {
             for (OrderItem item : requestDto.orderItems()) {
 
                 ProductResponseDto productResponseDto = productClient.getProductById(item.getProductId());
+
+                if (productResponseDto == null || productResponseDto.payload() == null) {
+                    throw new BusinessException(productResponseDto.message(), productResponseDto.httpStatus());
+                }
+
+
                 BigDecimal total = productResponseDto.payload().price().multiply(BigDecimal.valueOf(item.getQuantity()));
                 totalAmount = totalAmount.add(total);
 
@@ -246,7 +256,9 @@ public class OrderService {
 
                     updatedItems.add(newItem);
 
+
                 }
+
             }
 
             List<OrderItem> toBeRemoved = order.getOrderItems()
