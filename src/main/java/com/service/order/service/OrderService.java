@@ -7,6 +7,7 @@ import com.service.order.exception.ProductServiceUnAvailableException;
 import com.service.order.mapper.MapStructMapper;
 import com.service.order.model.dto.OrderItemDto;
 import com.service.order.model.dto.request.OrderRequestDto;
+import com.service.order.model.dto.request.UpdateOrderRequestDto;
 import com.service.order.model.dto.response.OrderResponseDto;
 import com.service.order.model.dto.response.ProductResponseDto;
 import com.service.order.model.entity.OrderItem;
@@ -14,6 +15,7 @@ import com.service.order.model.entity.Orders;
 import com.service.order.model.enums.OrderSource;
 import com.service.order.model.enums.OrderStatus;
 import com.service.order.model.enums.PaymentMethod;
+import com.service.order.repository.OrderItemRepository;
 import com.service.order.repository.OrderRepository;
 import com.service.order.util.Constants;
 import jakarta.transaction.Transactional;
@@ -31,17 +33,18 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
 public class OrderService {
 
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final MapStructMapper mapStructMapper;
     private final ProductClient productClient;
     private final OrderServiceConfig orderServiceConfig;
@@ -53,8 +56,9 @@ public class OrderService {
     private Long timeToLive;
 
     @Autowired
-    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate, RedisTemplate<String, Object> redisTemplate) {
+    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate, RedisTemplate<String, Object> redisTemplate, OrderItemRepository orderItemRepository) {
         this.orderRepository = orderRepository;
+        this.orderItemRepository = orderItemRepository;
         this.mapStructMapper = mapStructMapper;
         this.productClient = productClient;
         this.orderServiceConfig = orderServiceConfig;
@@ -87,7 +91,7 @@ public class OrderService {
         Orders order = Orders.builder()
                 .orderNumber("ORD" + orderRepository.findNextValOfSequence())
                 .customerId(requestDto.customerId())
-                .orderDate(LocalDateTime.now())  // Setting current date and time
+                .orderDate(LocalDateTime.now())
                 .status(OrderStatus.PENDING)
                 .shippingAddress(requestDto.shippingAddress())
                 .paymentMethod(requestDto.paymentMethod())
@@ -125,7 +129,6 @@ public class OrderService {
                 throw new ProductServiceUnAvailableException(Constants.PRODUCT_SERVICE_NOT_AVAILABLE, HttpStatus.SERVICE_UNAVAILABLE);
             }
         }
-
         order.setOrderItems(orderItems);
         order.setTotalAmount(calculateTotalAmount(totalAmount));
         order = orderRepository.save(order);
@@ -165,22 +168,11 @@ public class OrderService {
         return orderRepository.findById(id).orElseThrow(() -> new BusinessException(Constants.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND));
     }
 
-    private void validateUpdateOrder(OrderRequestDto requestDto, Orders order) {
+    private void validateUpdateOrder(UpdateOrderRequestDto requestDto, Orders order) {
 //        if (order.getStatus().equals(OrderStatus.SHIPPED)) {
 //            throw new BusinessException(Constants.ORDER_STATUS_SHIPPED_UPDATE_ERROR, HttpStatus.FORBIDDEN);
 //        }
 
-        Set<PaymentMethod> validPaymentMethod = Set.of(
-                PaymentMethod.CASH,
-                PaymentMethod.PAYPAL,
-                PaymentMethod.CREDIT_CARD,
-                PaymentMethod.BANK_TRANSFER,
-                PaymentMethod.DEBIT_CARD
-        );
-
-        if (!validPaymentMethod.contains(requestDto.paymentMethod())) {
-            throw new BusinessException(Constants.INVALID_PAYMENT_METHOD + requestDto.paymentMethod(), HttpStatus.BAD_REQUEST);
-        }
 
         Set<OrderStatus> validOrderStatus = Set.of(
                 OrderStatus.PENDING,
@@ -195,15 +187,6 @@ public class OrderService {
             throw new BusinessException(Constants.INVALID_ORDER_STATUS + requestDto.status(), HttpStatus.BAD_REQUEST);
         }
 
-        Set<OrderSource> validOrderSource = Set.of(
-                OrderSource.WEBSITE,
-                OrderSource.MOBILE_APP,
-                OrderSource.IN_STORE
-        );
-
-        if (!validOrderSource.contains(requestDto.orderSource())) {
-            throw new BusinessException(Constants.INVALID_ORDER_SOURCE + requestDto.status(), HttpStatus.BAD_REQUEST);
-        }
 
         if (requestDto.orderItems().isEmpty()) {
             throw new BusinessException(Constants.EMPTY_ORDER_LIST + requestDto.status(), HttpStatus.BAD_REQUEST);
@@ -215,50 +198,89 @@ public class OrderService {
 
     }
 
-    private List<OrderItem> mapToOrderItems(List<OrderItemDto> orderItems) {
-        return orderItems.stream()
-                .map(item -> OrderItem.builder()
-                        .productId(item.productId())
-                        .quantity(item.quantity())
-                        .build())
-                .toList();
-    }
-
-    public OrderResponseDto updateOrder(Long id, OrderRequestDto requestDto) {
+    @Transactional
+    public OrderResponseDto updateOrder(Long id, UpdateOrderRequestDto requestDto) {
 
         Orders order = getOrder(id);
 
         validateUpdateOrder(requestDto, order);
 
-
         //TODO Stock Availability
-
-        //TODO     "totalAmount": 8524.40 handel the update of tha amount
-
 
         if (requestDto.status() != null) {
             order.setStatus(requestDto.status());
         }
 
-        if (!order.getStatus().equals(OrderStatus.SHIPPED) && requestDto.shippingAddress() != null) {
+        if (requestDto.shippingAddress() != null) {
             order.setShippingAddress(requestDto.shippingAddress());
         }
 
         if (!requestDto.orderItems().isEmpty()) {
-            order.setOrderItems(mapToOrderItems(requestDto.orderItems()));
-            //get details of each product from product service and then cal the new amount
+
+            Map<String, OrderItem> existingItems = order.getOrderItems().stream().collect(Collectors.toMap(OrderItem::getProductId, Function.identity()));
+
+            BigDecimal totalAmount = BigDecimal.ZERO;
+
+            List<OrderItem> updatedItems = new ArrayList<>();
+
+            for (OrderItem item : requestDto.orderItems()) {
+
+                ProductResponseDto productResponseDto = productClient.getProductById(item.getProductId());
+                BigDecimal total = productResponseDto.payload().price().multiply(BigDecimal.valueOf(item.getQuantity()));
+                totalAmount = totalAmount.add(total);
+
+
+                if (existingItems.containsKey(item.getProductId())) {
+
+                    OrderItem orderItem = existingItems.get(item.getProductId());
+                    orderItem.setQuantity(item.getQuantity());
+                    updatedItems.add(orderItem);
+
+                } else {
+
+                    OrderItem newItem = OrderItem.builder()
+                            .productId(item.getProductId())
+                            .quantity(item.getQuantity())
+                            .order(order)
+                            .build();
+
+                    updatedItems.add(newItem);
+
+                }
+            }
+
+            List<OrderItem> toBeRemoved = order.getOrderItems()
+                    .stream()
+                    .filter(existingItem -> !updatedItems
+                            .stream()
+                            .anyMatch(item -> item.getProductId()
+                                    .equals(existingItem.getProductId())))
+                    .toList();
+
+            totalAmount = calculateTotalAmount(totalAmount);
+
+            order.setOrderItems(updatedItems);
+            order.setTotalAmount(totalAmount);
+
+            orderItemRepository.saveAll(updatedItems);
+            orderItemRepository.deleteAll(toBeRemoved);
         }
 
-        return mapStructMapper.toOrderResponseDto(orderRepository.save(order));
+        if (requestDto.notes() != null) {
+            order.setNotes(requestDto.notes());
+        }
+
+        order = orderRepository.save(order);
+
+        return mapStructMapper.toOrderResponseDto(order);
     }
 
     public OrderResponseDto deleteOrder(Long id) {
-        Optional<Orders> optionalOrder = orderRepository.findById(id);
 
-        if (!optionalOrder.isPresent()) {
-            throw new BusinessException(Constants.ORDER_NOT_FOUND, HttpStatus.NOT_FOUND);
-        }
+        Orders order = getOrder(id);
+
         orderRepository.deleteById(id);
-        return mapStructMapper.toOrderResponseDto(optionalOrder.get());
+
+        return mapStructMapper.toOrderResponseDto(order);
     }
 }

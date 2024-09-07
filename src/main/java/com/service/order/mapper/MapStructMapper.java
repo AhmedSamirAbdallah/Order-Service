@@ -2,6 +2,7 @@ package com.service.order.mapper;
 
 import com.service.order.model.dto.OrderItemDto;
 import com.service.order.model.dto.request.OrderRequestDto;
+import com.service.order.model.dto.request.UpdateOrderRequestDto;
 import com.service.order.model.dto.response.OrderResponseDto;
 import com.service.order.model.entity.OrderItem;
 import com.service.order.model.entity.Orders;
@@ -16,6 +17,8 @@ public interface MapStructMapper {
     OrderItemDto toOrderItemDto(OrderItem orderItem);
 
     OrderItem toOrderItem(OrderItemDto orderItemDto);
+
+    UpdateOrderRequestDto toOrder(Orders order);
 
 
 }

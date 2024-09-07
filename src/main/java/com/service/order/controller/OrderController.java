@@ -2,6 +2,7 @@ package com.service.order.controller;
 
 import com.service.order.common.ApiResponse;
 import com.service.order.model.dto.request.OrderRequestDto;
+import com.service.order.model.dto.request.UpdateOrderRequestDto;
 import com.service.order.service.OrderService;
 import com.service.order.util.Constants;
 import jakarta.validation.Valid;
@@ -35,8 +36,8 @@ public class OrderController {
     }
 
     @PutMapping(path = "/{id}")
-    ApiResponse editOrder(@PathVariable Long id, @RequestBody @Valid OrderRequestDto requestDto) {
-        return ApiResponse.success(orderService.updateOrder(id, requestDto),Constants.ORDER_UPDATED, HttpStatus.OK);
+    ApiResponse editOrder(@PathVariable Long id, @RequestBody @Valid UpdateOrderRequestDto requestDto) {
+        return ApiResponse.success(orderService.updateOrder(id, requestDto), Constants.ORDER_UPDATED, HttpStatus.OK);
     }
 
     @DeleteMapping(path = "/{id}")
