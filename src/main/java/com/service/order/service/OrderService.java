@@ -1,5 +1,9 @@
 package com.service.order.service;
 
+import aj.org.objectweb.asm.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.service.order.client.InventoryClient;
 import com.service.order.client.ProductClient;
 import com.service.order.common.ApiResponse;
@@ -10,6 +14,7 @@ import com.service.order.model.dto.OrderItemDto;
 import com.service.order.model.dto.request.OrderRequestDto;
 import com.service.order.model.dto.request.UpdateOrderRequestDto;
 import com.service.order.model.dto.response.OrderResponseDto;
+import com.service.order.model.dto.response.ProductAvailability;
 import com.service.order.model.dto.response.ProductResponseDto;
 import com.service.order.model.entity.OrderItem;
 import com.service.order.model.entity.Orders;
@@ -51,12 +56,13 @@ public class OrderService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
     private final InventoryClient inventoryClient;
+    private final ObjectMapper objectMapper;
 
     @Value(value = "${redis.cache.ttl}")
     private Long timeToLive;
 
     @Autowired
-    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate, RedisTemplate<String, Object> redisTemplate, OrderItemRepository orderItemRepository, InventoryClient inventoryClient) {
+    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate, RedisTemplate<String, Object> redisTemplate, OrderItemRepository orderItemRepository, InventoryClient inventoryClient, ObjectMapper objectMapper) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.mapStructMapper = mapStructMapper;
@@ -65,6 +71,7 @@ public class OrderService {
         this.kafkaTemplate = kafkaTemplate;
         this.redisTemplate = redisTemplate;
         this.inventoryClient = inventoryClient;
+        this.objectMapper = objectMapper;
     }
 
     private BigDecimal calculateTotalAmount(BigDecimal totalAmount) {
@@ -200,11 +207,6 @@ public class OrderService {
         if (requestDto.orderItems().isEmpty()) {
             throw new BusinessException(Constants.EMPTY_ORDER_LIST + requestDto.status(), HttpStatus.BAD_REQUEST);
         }
-
-        //TODO Ensure that each productId is valid and exists in the inventory.
-        //Check that the quantity is positive and within allowable limits.
-        //Update the order items accordingly.
-
     }
 
     @Transactional
@@ -213,8 +215,6 @@ public class OrderService {
         Orders order = getOrder(id);
 
         validateUpdateOrder(requestDto, order);
-
-        //TODO Stock Availability
 
         if (requestDto.status() != null) {
             order.setStatus(requestDto.status());
@@ -240,6 +240,9 @@ public class OrderService {
                     throw new BusinessException(productResponseDto.message(), productResponseDto.httpStatus());
                 }
 
+                if (!checkAvailability(item.getProductId(), item.getQuantity())) {
+                    throw new BusinessException(Constants.PRODUCT_NOT_AVAILABLE, HttpStatus.BAD_REQUEST);
+                }
 
                 BigDecimal total = productResponseDto.payload().price().multiply(BigDecimal.valueOf(item.getQuantity()));
                 totalAmount = totalAmount.add(total);
@@ -260,7 +263,6 @@ public class OrderService {
                             .build();
 
                     updatedItems.add(newItem);
-
 
                 }
 
@@ -317,8 +319,23 @@ public class OrderService {
     }
 
     private Boolean checkAvailability(String productId, Long quantity) {
-        ApiResponse response = inventoryClient.checkProductAvailability(productId, quantity);
-        Map<String, Object> data = (Map<String, Object>) response.getPayload();
-        return (Boolean) data.get("isAvailable");
+        try {
+
+            ApiResponse response = inventoryClient.checkProductAvailability(productId, quantity);
+
+            if (response == null || response.getPayload() == null) {
+                logger.error(String.valueOf(response));
+                throw new BusinessException(response.getMessage(), response.getHttpStatus());
+            }
+
+            String json = objectMapper.writeValueAsString(response.getPayload());
+            ProductAvailability productAvailability = objectMapper.readValue(json, ProductAvailability.class);
+
+            return productAvailability.isAvailable();
+
+        } catch (JsonProcessingException ex) {
+            logger.error("Error processing JSON response for productId: {} with quantity: {}. Exception: {}", productId, quantity, ex.getMessage(), ex);
+            return false;
+        }
     }
 }

@@ -25,7 +25,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ApiResponse handelBusinessException(BusinessException ex) {
-        return ApiResponse.error(ex.getMessage(), HttpStatus.BAD_REQUEST);
+        return ApiResponse.error(ex.getMessage(), ex.getHttpStatus());
     }
 
 
