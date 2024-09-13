@@ -15,6 +15,7 @@ public class Constants {
     // Error messages
 
     public static final String PRODUCT_SERVICE_NOT_AVAILABLE = "Product Service Not available.";
+    public static final String PRODUCT_NOT_AVAILABLE = "Product not available";
     public static final String ORDER_NOT_FOUND = "Order not found.";
     public static final String INVALID_INPUT = "Invalid input. Please check your request.";
     public static final String INVALID_ORDER_ID = "Invalid order ID provided.";

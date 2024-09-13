@@ -1,9 +1,10 @@
 package com.service.order.service;
 
+import com.service.order.client.InventoryClient;
 import com.service.order.client.ProductClient;
+import com.service.order.common.ApiResponse;
 import com.service.order.config.OrderServiceConfig;
 import com.service.order.exception.BusinessException;
-import com.service.order.exception.ProductServiceUnAvailableException;
 import com.service.order.mapper.MapStructMapper;
 import com.service.order.model.dto.OrderItemDto;
 import com.service.order.model.dto.request.OrderRequestDto;
@@ -12,16 +13,12 @@ import com.service.order.model.dto.response.OrderResponseDto;
 import com.service.order.model.dto.response.ProductResponseDto;
 import com.service.order.model.entity.OrderItem;
 import com.service.order.model.entity.Orders;
-import com.service.order.model.enums.OrderSource;
 import com.service.order.model.enums.OrderStatus;
-import com.service.order.model.enums.PaymentMethod;
 import com.service.order.repository.OrderItemRepository;
 import com.service.order.repository.OrderRepository;
 import com.service.order.util.Constants;
 import jakarta.transaction.Transactional;
-import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.query.Order;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,10 +30,12 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 @Service
@@ -51,12 +50,13 @@ public class OrderService {
     private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final InventoryClient inventoryClient;
 
     @Value(value = "${redis.cache.ttl}")
     private Long timeToLive;
 
     @Autowired
-    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate, RedisTemplate<String, Object> redisTemplate, OrderItemRepository orderItemRepository) {
+    OrderService(OrderRepository orderRepository, MapStructMapper mapStructMapper, ProductClient productClient, OrderServiceConfig orderServiceConfig, KafkaTemplate<String, Object> kafkaTemplate, RedisTemplate<String, Object> redisTemplate, OrderItemRepository orderItemRepository, InventoryClient inventoryClient) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.mapStructMapper = mapStructMapper;
@@ -64,6 +64,7 @@ public class OrderService {
         this.orderServiceConfig = orderServiceConfig;
         this.kafkaTemplate = kafkaTemplate;
         this.redisTemplate = redisTemplate;
+        this.inventoryClient = inventoryClient;
     }
 
     private BigDecimal calculateTotalAmount(BigDecimal totalAmount) {
@@ -105,7 +106,6 @@ public class OrderService {
 
         List<OrderItem> orderItems = new ArrayList<>();
 
-        //TODO checks the availability of the selected products (by consulting the Inventory Service).
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (OrderItemDto item : requestDto.orderItems()) {
@@ -116,12 +116,14 @@ public class OrderService {
                 throw new BusinessException(responseDto.message(), responseDto.httpStatus());
             }
 
+            if (!checkAvailability(item.productId(), item.quantity())) {
+                throw new BusinessException(Constants.PRODUCT_NOT_AVAILABLE, HttpStatus.BAD_REQUEST);
+            }
 
             BigDecimal productPrice = responseDto.payload().price();
 
             productPrice = productPrice.multiply(BigDecimal.valueOf(item.quantity()));
             totalAmount = totalAmount.add(productPrice);
-
 
             orderItems.add(OrderItem.builder()
                     .order(order)
@@ -138,8 +140,6 @@ public class OrderService {
 
         redisTemplate.opsForValue().set(Constants.ORDER_CACHE_KEY_PREFIX + order.getId(), responseDto, timeToLive, TimeUnit.MINUTES);
         kafkaTemplate.send(Constants.ORDER_CREATED_EVENT, responseDto);
-
-        //TODO Update Inventory STOCK
 
         return responseDto;
     }
@@ -314,5 +314,11 @@ public class OrderService {
         redisTemplate.delete(Constants.ORDER_CACHE_KEY_PREFIX + id);
 
         return responseDto;
+    }
+
+    private Boolean checkAvailability(String productId, Long quantity) {
+        ApiResponse response = inventoryClient.checkProductAvailability(productId, quantity);
+        Map<String, Object> data = (Map<String, Object>) response.getPayload();
+        return (Boolean) data.get("isAvailable");
     }
 }
