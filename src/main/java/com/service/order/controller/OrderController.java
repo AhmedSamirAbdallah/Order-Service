@@ -26,8 +26,8 @@ public class OrderController {
     }
 
     @GetMapping
-    ApiResponse getOrder() {
-        return ApiResponse.success(orderService.getOrders(), Constants.ORDER_RETRIEVED, HttpStatus.OK);
+    ApiResponse getOrder(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
+        return ApiResponse.success(orderService.getOrders(page, size), Constants.ORDER_RETRIEVED, HttpStatus.OK);
     }
 
     @GetMapping(path = "/{id}")

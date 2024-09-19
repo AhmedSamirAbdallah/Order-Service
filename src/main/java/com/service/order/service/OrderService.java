@@ -28,6 +28,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -151,14 +154,13 @@ public class OrderService {
         return responseDto;
     }
 
-    public List<OrderResponseDto> getOrders() {
+    public Page<OrderResponseDto> getOrders(int page, int size) {
 
-        List<OrderResponseDto> ordersList = orderRepository.findAll()
-                .stream()
-                .map(mapStructMapper::toOrderResponseDto)
-                .toList();
+        Pageable pageable = PageRequest.of(page, size);
 
-        return ordersList;
+        Page<Orders> ordersPage = orderRepository.findAll(pageable);
+
+        return ordersPage.map(order -> mapStructMapper.toOrderResponseDto(order));
     }
 
     public OrderResponseDto getOrderById(Long id) {
