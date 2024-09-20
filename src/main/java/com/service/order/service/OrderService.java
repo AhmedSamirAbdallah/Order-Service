@@ -1,8 +1,6 @@
 package com.service.order.service;
 
-import aj.org.objectweb.asm.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.service.order.client.InventoryClient;
 import com.service.order.client.ProductClient;
@@ -11,6 +9,7 @@ import com.service.order.config.OrderServiceConfig;
 import com.service.order.exception.BusinessException;
 import com.service.order.mapper.MapStructMapper;
 import com.service.order.model.dto.OrderItemDto;
+import com.service.order.model.dto.PaginatedResponse;
 import com.service.order.model.dto.request.OrderRequestDto;
 import com.service.order.model.dto.request.UpdateOrderRequestDto;
 import com.service.order.model.dto.response.OrderResponseDto;
@@ -31,6 +30,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -154,13 +154,29 @@ public class OrderService {
         return responseDto;
     }
 
-    public Page<OrderResponseDto> getOrders(int page, int size) {
+    public PaginatedResponse<OrderResponseDto> getOrders(int page, int size, String[] sortBy, String[] sortOrder) {
+        Sort sort = Sort.by(sortOrder[0].equals("desc") ? Sort.Direction.DESC : Sort.Direction.ASC, sortBy[0]);
 
-        Pageable pageable = PageRequest.of(page, size);
+        for (int i = 1; i < sortBy.length; i++) {
+
+            sort.and(Sort.by(sortOrder[i].equals("desc") ? Sort.Direction.DESC : Sort.Direction.ASC, sortBy[i]));
+        }
+
+        Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<Orders> ordersPage = orderRepository.findAll(pageable);
 
-        return ordersPage.map(order -> mapStructMapper.toOrderResponseDto(order));
+        List<OrderResponseDto> orderResponseDtoList = ordersPage
+                .stream()
+                .map(order -> mapStructMapper.toOrderResponseDto(order))
+                .toList();
+
+        return new PaginatedResponse<>(orderResponseDtoList,
+                ordersPage.getNumber(),
+                ordersPage.getSize(),
+                ordersPage.getTotalElements(),
+                ordersPage.getTotalPages());
+
     }
 
     public OrderResponseDto getOrderById(Long id) {
