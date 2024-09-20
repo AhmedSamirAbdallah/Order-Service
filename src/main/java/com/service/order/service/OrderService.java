@@ -21,8 +21,13 @@ import com.service.order.model.enums.OrderStatus;
 import com.service.order.repository.OrderItemRepository;
 import com.service.order.repository.OrderRepository;
 import com.service.order.util.Constants;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +41,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -356,4 +362,33 @@ public class OrderService {
             return false;
         }
     }
+
+    public void exportOrdersReportInExcel(HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=orders.xlsx");
+
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("ordersSheet");
+
+        List<Orders> ordersList = orderRepository.findAll();
+
+        Row header = sheet.createRow(0);
+        header.createCell(0).setCellValue("order id");
+        header.createCell(1).setCellValue("order number");
+
+        Integer rowNumber = 1;
+
+        for (Orders orders : ordersList) {
+            Row row = sheet.createRow(rowNumber++);
+            row.createCell(0).setCellValue(orders.getId());
+            row.createCell(1).setCellValue(orders.getOrderNumber());
+
+        }
+        workbook.write(response.getOutputStream());
+    }
+
+    public void exportOrdersReportInPdf(HttpServletResponse response) {
+
+    }
+
 }

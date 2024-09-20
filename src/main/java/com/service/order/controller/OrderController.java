@@ -5,10 +5,13 @@ import com.service.order.model.dto.request.OrderRequestDto;
 import com.service.order.model.dto.request.UpdateOrderRequestDto;
 import com.service.order.service.OrderService;
 import com.service.order.util.Constants;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
 
 @RestController
 @RequestMapping(path = "/api/orders")
@@ -53,4 +56,12 @@ public class OrderController {
         return ApiResponse.success(orderService.getProduct(id), "", HttpStatus.OK);
     }
 
+    @GetMapping(path = "/export")
+    void exportOrdersReport(@RequestParam String format, HttpServletResponse response) throws IOException {
+        if (format.equalsIgnoreCase("excel")) {
+            orderService.exportOrdersReportInExcel(response);
+        } else {
+            orderService.exportOrdersReportInPdf(response);
+        }
+    }
 }
