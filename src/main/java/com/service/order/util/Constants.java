@@ -34,4 +34,11 @@ public class Constants {
     public static final String ORDER_DELETED_EVENT = "order-deleted-event";
     public static final String ORDER_CANCELED_EVENT = "order-canceled-event";
 
+
+    public static String parseToString(Object object) {
+        if (object != null) {
+            return object.toString();
+        }
+        return null;
+    }
 }

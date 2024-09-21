@@ -24,6 +24,12 @@ import com.service.order.util.Constants;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDFormContentStream;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDTrueTypeFont;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -370,11 +376,22 @@ public class OrderService {
         Workbook workbook = new XSSFWorkbook();
         Sheet sheet = workbook.createSheet("ordersSheet");
 
+        sheet.setColumnWidth(0, 20 * 256);
+        sheet.setColumnWidth(1, 20 * 256);
+        sheet.setColumnWidth(2, 20 * 256);
+        sheet.setColumnWidth(3, 30 * 256);
+        sheet.setColumnWidth(4, 20 * 256);
+        sheet.setColumnWidth(5, 20 * 256);
+
         List<Orders> ordersList = orderRepository.findAll();
 
         Row header = sheet.createRow(0);
         header.createCell(0).setCellValue("order id");
         header.createCell(1).setCellValue("order number");
+        header.createCell(2).setCellValue("customer id");
+        header.createCell(3).setCellValue("order date");
+        header.createCell(4).setCellValue("order status");
+        header.createCell(5).setCellValue("total amount");
 
         Integer rowNumber = 1;
 
@@ -382,13 +399,64 @@ public class OrderService {
             Row row = sheet.createRow(rowNumber++);
             row.createCell(0).setCellValue(orders.getId());
             row.createCell(1).setCellValue(orders.getOrderNumber());
-
+            row.createCell(2).setCellValue(orders.getCustomerId());
+            row.createCell(3).setCellValue(orders.getOrderDate());
+            row.createCell(4).setCellValue(orders.getStatus().toString());
+            row.createCell(5).setCellValue(Constants.parseToString(orders.getTotalAmount()));
         }
         workbook.write(response.getOutputStream());
     }
 
-    public void exportOrdersReportInPdf(HttpServletResponse response) {
+    public void exportOrdersReportInPdf(HttpServletResponse response) throws IOException {
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=orders.pdf");
 
+        PDDocument document = new PDDocument();
+        PDPage page = new PDPage();
+        document.addPage(page);
+        PDPageContentStream contentStream = new PDPageContentStream(document, page);
+
+        // Title
+        contentStream.setFont(PDType1Font.HELVETICA_BOLD, 16);
+        contentStream.beginText();
+        contentStream.newLineAtOffset(200, 750); // Centered title
+        contentStream.showText("Orders Report");
+        contentStream.endText();
+
+        // Header
+        contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12);
+        contentStream.beginText();
+        contentStream.newLineAtOffset(100, 720); // Adjust Y position for header
+        contentStream.showText("Order ID");
+        contentStream.newLineAtOffset(120, 0);
+        contentStream.showText("Order Number");
+        contentStream.endText();
+
+        // Underline header
+        contentStream.setLineWidth(1f);
+        contentStream.moveTo(100, 715); // Adjust Y position for line
+        contentStream.lineTo(400, 715); // Adjust X position for line
+        contentStream.stroke();
+
+        // Data
+        contentStream.setFont(PDType1Font.TIMES_ROMAN, 12);
+        List<Orders> ordersList = orderRepository.findAll();
+        Integer positionY = 700;
+
+        for (Orders orders : ordersList) {
+            contentStream.beginText();
+            contentStream.newLineAtOffset(100, positionY);
+            contentStream.showText(String.valueOf(orders.getId()));
+            contentStream.newLineAtOffset(120, 0);
+            contentStream.showText(orders.getOrderNumber());
+            contentStream.endText();
+            positionY -= 15; // Move down for the next line
+        }
+
+        contentStream.close();
+        document.save(response.getOutputStream());
+        document.close();
     }
+
 
 }
